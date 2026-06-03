@@ -1,319 +1,145 @@
-# YouTube Clipper Skill
+# 适用于 Codex 的 YouTube Clipper Skill
 
-> Claude Code 的 AI 智能视频剪辑工具。下载视频、生成语义章节、剪辑片段、翻译双语字幕并烧录字幕到视频。
+这是一个给 Codex 用的通用视频剪辑 skill，基于 `yt-dlp` 支持的网站工作。它帮助 Codex 下载视频、根据字幕做语义分章、裁剪片段、准备双语字幕、把字幕烧录进视频，并生成摘要文案。
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 
 [English](README.md) | 简体中文
 
-[功能特性](#功能特性) • [安装](#安装) • [使用方法](#使用方法) • [系统要求](#系统要求) • [配置](#配置) • [常见问题](#常见问题)
+## 这次改造的重点
 
----
+这个仓库原本是偏 Claude 的 skill，现在已经改成更适合 Codex 使用的版本：
 
-## 功能特性
+- 去掉了 Claude 专属的 skill 元数据和工具假设
+- 文档统一成 Windows PowerShell + Codex 的语境
+- Python 示例统一改成这台机器上的 `codex-conda-python`
+- 字幕翻译不再假设“模型会自动补完”，而是改成显式 JSON 流程
+- 中间文件放在 `work/`，用户交付结果放在 `outputs/`
 
-- **AI 语义分析** - 通过理解视频内容生成精细章节（每个 2-5 分钟），而非机械按时间切分
-- **精确剪辑** - 使用 FFmpeg 以帧精度提取视频片段
-- **双语字幕** - 批量翻译字幕为中英双语，减少 95% 的 API 调用
-- **字幕烧录** - 将双语字幕硬编码到视频中，支持自定义样式
-- **内容总结** - 自动生成适合社交媒体的文案（小红书、抖音、微信公众号）
+## 环境要求
 
----
+### Python
 
-## 安装
+这台机器请使用：
 
-### 方式 1: npx skills（推荐）
-
-```bash
-npx skills add https://github.com/op7418/Youtube-clipper-skill
+```powershell
+D:\software\python\Anaconda3\envs\codex-conda-python\python.exe
 ```
 
-该命令会自动将 skill 安装到 `~/.claude/skills/youtube-clipper/` 目录。
+### 系统工具
 
-### 方式 2: 手动安装
-
-```bash
-git clone https://github.com/op7418/Youtube-clipper-skill.git
-cd Youtube-clipper-skill
-bash install_as_skill.sh
-```
-
-安装脚本会：
-- 复制文件到 `~/.claude/skills/youtube-clipper/`
-- 安装 Python 依赖（yt-dlp、pysrt、python-dotenv）
-- 检查系统依赖（Python、yt-dlp、FFmpeg）
-- 创建 `.env` 配置文件
-
----
-
-## 系统要求
-
-### 系统依赖
-
-| 依赖项 | 版本 | 用途 | 安装方法 |
-|--------|------|------|----------|
-| **Python** | 3.8+ | 脚本执行 | [python.org](https://www.python.org/downloads/) |
-| **yt-dlp** | 最新版 | YouTube 视频下载 | `brew install yt-dlp` (macOS)<br>`sudo apt install yt-dlp` (Ubuntu)<br>`pip install yt-dlp` (pip) |
-| **FFmpeg with libass** | 最新版 | 视频处理和字幕烧录 | `brew install ffmpeg-full` (macOS)<br>`sudo apt install ffmpeg libass-dev` (Ubuntu) |
+- `yt-dlp`
+- `ffmpeg`
 
 ### Python 包
 
-安装脚本会自动安装以下包：
-- `yt-dlp` - YouTube 下载器
-- `pysrt` - SRT 字幕解析器
-- `python-dotenv` - 环境变量管理
+- `yt-dlp`
+- `pysrt`
+- `python-dotenv`
 
-### 重要：FFmpeg libass 支持
+安装命令：
 
-**macOS 用户注意**：Homebrew 的标准 `ffmpeg` 包不包含 libass 支持（字幕烧录必需）。你必须安装 `ffmpeg-full`：
-
-```bash
-# 卸载标准 ffmpeg（如果已安装）
-brew uninstall ffmpeg
-
-# 安装 ffmpeg-full（包含 libass）
-brew install ffmpeg-full
+```powershell
+D:\software\python\Anaconda3\envs\codex-conda-python\python.exe -m pip install -i https://mirrors.sustech.edu.cn/pypi/simple yt-dlp pysrt python-dotenv
 ```
 
-**验证 libass 支持**：
-```bash
-ffmpeg -filters 2>&1 | grep subtitles
-# 应该输出：subtitles    V->V  (...)
+## 快速检查
+
+```powershell
+yt-dlp --version
+ffmpeg -version
+D:\software\python\Anaconda3\envs\codex-conda-python\python.exe -c "import yt_dlp, pysrt; print('python deps ok')"
 ```
 
----
+## 在 Codex 里的典型流程
 
-## 使用方法
+### 1. 下载视频和字幕
 
-### 在 Claude Code 中使用
-
-只需告诉 Claude 剪辑一个 YouTube 视频：
-
-```
-Clip this YouTube video: https://youtube.com/watch?v=VIDEO_ID
+```powershell
+D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\download_video.py <video_url> work
 ```
 
-或者
+### 2. 分析字幕内容
 
-```
-剪辑这个 YouTube 视频：https://youtube.com/watch?v=VIDEO_ID
-```
-
-### 工作流程
-
-1. **环境检测** - 验证 yt-dlp、FFmpeg 和 Python 依赖
-2. **视频下载** - 下载视频（最高 1080p）和英文字幕
-3. **AI 章节分析** - Claude 分析字幕生成语义章节（每个 2-5 分钟）
-4. **用户选择** - 选择要剪辑的章节和处理选项
-5. **处理** - 剪辑视频、翻译字幕、烧录字幕（如果需要）
-6. **输出** - 组织文件到 `./youtube-clips/<时间戳>/`
-
-### 输出文件
-
-每个剪辑的章节包含：
-
-```
-./youtube-clips/20260122_143022/
-└── 章节标题/
-    ├── 章节标题_clip.mp4              # 原始剪辑（无字幕）
-    ├── 章节标题_with_subtitles.mp4   # 带烧录字幕的视频
-    ├── 章节标题_bilingual.srt        # 双语字幕文件
-    └── 章节标题_summary.md           # 社交媒体文案
+```powershell
+D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\analyze_subtitles.py <subtitle_path>
 ```
 
----
+然后由 Codex 在对话里完成语义分章，给出：
 
-## 配置
+- 标题
+- 时间范围
+- 摘要
+- 关键词
 
-本 skill 使用环境变量进行自定义配置。编辑 `~/.claude/skills/youtube-clipper/.env`：
+### 3. 裁剪视频片段
 
-### 主要设置
-
-```bash
-# FFmpeg 路径（留空则自动检测）
-FFMPEG_PATH=
-
-# 输出目录（默认：当前工作目录）
-OUTPUT_DIR=./youtube-clips
-
-# 视频质量限制（720、1080、1440、2160）
-MAX_VIDEO_HEIGHT=1080
-
-# 翻译批次大小（推荐 20-25）
-TRANSLATION_BATCH_SIZE=20
-
-# 目标翻译语言
-TARGET_LANGUAGE=中文
-
-# 目标章节时长（秒，推荐 180-300）
-TARGET_CHAPTER_DURATION=180
+```powershell
+D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\clip_video.py <video_path> <start_time> <end_time> <output_mp4>
 ```
 
-完整配置选项请参见 [.env.example](.env.example)。
+### 4. 提取对应字幕片段
 
----
-
-## 使用示例
-
-### 示例 1：从技术访谈中提取精华
-
-**输入**：
-```
-剪辑这个视频：https://youtube.com/watch?v=Ckt1cj0xjRM
+```powershell
+D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\extract_subtitle_clip.py <subtitle_vtt> <start_time> <end_time> <output_srt>
 ```
 
-**输出**（AI 生成的章节）：
-```
-1. [00:00 - 03:15] AGI 是指数曲线而非时间点
-2. [03:15 - 06:30] 中国在 AI 领域的差距
-3. [06:30 - 09:45] 芯片禁令的影响
-...
+### 5. 为 Codex 生成翻译载荷
+
+```powershell
+D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\translate_subtitles.py <segment_srt> <payload_json>
 ```
 
-**结果**：选择章节 → 获得带双语字幕的剪辑视频 + 社交媒体文案
+这个命令会生成带 `translation` 占位值的 JSON，之后由 Codex 显式补全翻译内容。
 
-### 示例 2：从课程视频创建短片
+### 6. 生成双语字幕
 
-**输入**：
-```
-剪辑这个讲座视频并创建双语字幕：https://youtube.com/watch?v=LECTURE_ID
-```
+翻译完成后，可以调用 `scripts/translate_subtitles.py` 里的辅助函数：
 
-**选项**：
-- 生成双语字幕：是
-- 烧录字幕到视频：是
-- 生成总结：是
+```python
+from scripts.translate_subtitles import create_bilingual_subtitles
 
-**结果**：可直接在社交媒体平台分享的高质量剪辑视频
-
----
-
-## 核心差异化功能
-
-### AI 语义章节分析
-
-与机械按时间切分不同，本 skill 使用 Claude AI 来：
-- 理解内容语义
-- 识别自然的主题转换点
-- 生成有意义的章节标题和摘要
-- 确保完整覆盖，无遗漏
-
-**示例**：
-```
-❌ 机械切分：[0:00-30:00]、[30:00-60:00]
-✅ AI 语义分析：
-   - [00:00-03:15] AGI 定义
-   - [03:15-07:30] 中国的 AI 格局
-   - [07:30-12:00] 芯片禁令影响
+create_bilingual_subtitles(translated_rows, "outputs\\20260601_120000\\clip\\clip_bilingual.srt")
 ```
 
-### 批量翻译优化
+双语字幕规则：
 
-一次翻译 20 条字幕，而非逐条翻译：
-- 减少 95% 的 API 调用
-- 速度提升 10 倍
-- 更好的翻译一致性
+- 先在 Codex 里显式完成翻译
+- 再把原文和译文合并成双语 `.srt`
 
-### 双语字幕格式
+### 7. 烧录字幕到视频
 
-生成的字幕文件同时包含英文和中文：
-
-```srt
-1
-00:00:00,000 --> 00:00:03,500
-This is the English subtitle
-这是中文字幕
-
-2
-00:00:03,500 --> 00:00:07,000
-Another English line
-另一行中文
+```powershell
+D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\burn_subtitles.py <clip_mp4> <bilingual_srt> <burned_mp4>
 ```
 
----
+## 输出目录约定
 
-## 常见问题
+建议使用：
 
-### FFmpeg 字幕烧录失败
-
-**错误**：`Option not found: subtitles` 或 `filter not found`
-
-**解决方案**：安装 `ffmpeg-full`（macOS）或确保安装了 `libass-dev`（Ubuntu）：
-```bash
-# macOS
-brew uninstall ffmpeg
-brew install ffmpeg-full
-
-# Ubuntu
-sudo apt install ffmpeg libass-dev
+```text
+work/
+outputs/
+  20260601_120000/
+    clip-title/
+      clip.mp4
+      clip_bilingual.srt
+      clip_with_subtitles.mp4
+      summary.md
 ```
 
-### 视频下载速度慢
+## 说明
 
-**解决方案**：在 `.env` 中设置代理：
-```bash
-YT_DLP_PROXY=http://proxy-server:port
-# 或
-YT_DLP_PROXY=socks5://proxy-server:port
-```
+- 语义分章是模型步骤，不是纯脚本步骤。
+- 字幕翻译也是模型步骤，脚本只负责准备和写出结构化数据。
+- 如果 FFmpeg 不支持字幕滤镜，视频裁剪仍然可能成功，只是烧录字幕会失败。
+- 站点是否兼容取决于本机 `yt-dlp` 的支持范围，不只限于 YouTube。
+- 双语字幕输出必须始终包含中文。
 
-### 字幕翻译失败
+## 相关文件
 
-**原因**：API 限流或网络问题
-
-**解决方案**：skill 会自动重试最多 3 次。如果持续失败，请检查：
-- 网络连接
-- Claude API 状态
-- 减少 `.env` 中的 `TRANSLATION_BATCH_SIZE`
-
-### 文件名包含特殊字符
-
-**问题**：文件名中的 `:`、`/`、`?` 等可能导致错误
-
-**解决方案**：skill 会自动清理文件名：
-- 移除特殊字符：`/ \ : * ? " < > |`
-- 将空格替换为下划线
-- 限制长度为 100 字符
-
----
-
-## 文档
-
-- **[SKILL.md](SKILL.md)** - 完整工作流程和技术细节
-- **[TECHNICAL_NOTES.md](TECHNICAL_NOTES.md)** - 实现笔记和设计决策
-- **[FIXES_AND_IMPROVEMENTS.md](FIXES_AND_IMPROVEMENTS.md)** - 更新日志和 Bug 修复
-- **[references/](references/)** - FFmpeg、yt-dlp 和字幕格式指南
-
----
-
-## 贡献
-
-欢迎贡献！请：
-- 通过 [GitHub Issues](https://github.com/op7418/Youtube-clipper-skill/issues) 报告 Bug
-- 提交功能请求
-- 为改进提交 Pull Request
-
----
-
-## 许可证
-
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件。
-
----
-
-## 致谢
-
-- **[Claude Code](https://claude.ai/claude-code)** - AI 驱动的 CLI 工具
-- **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** - YouTube 下载引擎
-- **[FFmpeg](https://ffmpeg.org/)** - 视频处理利器
-
----
-
-<div align="center">
-
-**Made with ❤️ by [op7418](https://github.com/op7418)**
-
-如果这个 skill 对你有帮助，请给个 ⭐️
-
-</div>
+- [SKILL.md](SKILL.md)：Codex skill 使用说明
+- [TECHNICAL_NOTES.md](TECHNICAL_NOTES.md)：上游实现说明
+- [FIXES_AND_IMPROVEMENTS.md](FIXES_AND_IMPROVEMENTS.md)：上游修复记录
+- [references/](references/)：FFmpeg、yt-dlp、字幕格式参考
