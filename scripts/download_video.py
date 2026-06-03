@@ -48,7 +48,7 @@ def download_video(url: str, output_dir: str = None) -> dict:
         "outtmpl": str(output_path / "%(id)s.%(ext)s"),
         "writesubtitles": True,
         "writeautomaticsub": True,
-        "subtitleslangs": ["en"],
+        "subtitleslangs": ["en", "zh-CN", "zh-Hans", "zh-Hant"],
         "subtitlesformat": "vtt",
         "writethumbnail": False,
         "quiet": False,
@@ -135,6 +135,12 @@ def find_subtitle_file(video_path: Path) -> Path | None:
     candidates = [
         video_path.with_suffix(".en.vtt"),
         video_path.parent / f"{video_path.stem}.en.vtt",
+        video_path.with_suffix(".zh-CN.vtt"),
+        video_path.parent / f"{video_path.stem}.zh-CN.vtt",
+        video_path.with_suffix(".zh-Hans.vtt"),
+        video_path.parent / f"{video_path.stem}.zh-Hans.vtt",
+        video_path.with_suffix(".zh-Hant.vtt"),
+        video_path.parent / f"{video_path.stem}.zh-Hant.vtt",
         video_path.with_suffix(".vtt"),
     ]
 
