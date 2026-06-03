@@ -7,13 +7,62 @@ AI-assisted video clipping for Codex using `yt-dlp` supported sites. This reposi
 
 English | [简体中文](README.zh-CN.md)
 
+## Upstream
+
+This repository was cloned from [op7418/Youtube-clipper-skill](https://github.com/op7418/Youtube-clipper-skill) and then adapted for Codex-focused workflows and local environment assumptions.
+
+## Installation
+
+The easiest way to install this skill into Codex is to use the packaged output in:
+
+```text
+outputs\youtube-clipper-codex-package
+```
+
+From that folder, run:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install_to_codex_skills.ps1
+```
+
+This installs the skill to:
+
+```text
+%USERPROFILE%\.codex\skills\youtube-clipper
+```
+
+If you prefer to install it manually, copy:
+
+```text
+outputs\youtube-clipper-codex-package\youtube-clipper
+```
+
+into:
+
+```text
+%USERPROFILE%\.codex\skills\
+```
+
+After installation, verify that this file exists:
+
+```text
+%USERPROFILE%\.codex\skills\youtube-clipper\SKILL.md
+```
+
+The packaged installer instructions are also documented in:
+
+```text
+outputs\youtube-clipper-codex-package\INSTALL.md
+```
+
 ## What Changed
 
 This repository started as a Claude-oriented skill. The Codex adaptation:
 
 - removes Claude-only skill metadata and tool assumptions
 - rewrites docs for Windows PowerShell and Codex
-- pins the Python examples to the local `codex-conda-python` interpreter
+- uses generic Python command examples instead of machine-specific interpreter paths
 - makes subtitle translation explicit instead of assuming hidden model-side execution
 - uses `work/` for intermediate files and `outputs/` for user-facing artifacts
 
@@ -21,10 +70,10 @@ This repository started as a Claude-oriented skill. The Codex adaptation:
 
 ### Python
 
-Use this interpreter on this machine:
+Use the Python interpreter from your preferred environment:
 
 ```powershell
-D:\software\python\Anaconda3\envs\codex-conda-python\python.exe
+python
 ```
 
 ### System tools
@@ -41,7 +90,7 @@ D:\software\python\Anaconda3\envs\codex-conda-python\python.exe
 Install Python packages with:
 
 ```powershell
-D:\software\python\Anaconda3\envs\codex-conda-python\python.exe -m pip install -i https://mirrors.sustech.edu.cn/pypi/simple yt-dlp pysrt python-dotenv
+python -m pip install yt-dlp pysrt python-dotenv
 ```
 
 ## Quick Verification
@@ -49,21 +98,74 @@ D:\software\python\Anaconda3\envs\codex-conda-python\python.exe -m pip install -
 ```powershell
 yt-dlp --version
 ffmpeg -version
-D:\software\python\Anaconda3\envs\codex-conda-python\python.exe -c "import yt_dlp, pysrt; print('python deps ok')"
+python -c "import yt_dlp, pysrt; print('python deps ok')"
 ```
+
+## Using the Skill in Codex
+
+After installing the skill, you can trigger it in Codex with natural-language requests that include a video URL and the desired outcome.
+
+### Prompt Template
+
+Use a request in this shape:
+
+```text
+Help me <goal> for this video:
+<video_url>
+```
+
+### Common Examples
+
+Download a video and identify highlight clips:
+
+```text
+Help me download this video and identify highlight clips:
+https://example.com/video
+```
+
+Download a video, propose semantic chapters, and generate bilingual subtitles:
+
+```text
+Help me download this video, propose semantic chapters, and generate bilingual subtitles:
+https://example.com/video
+```
+
+Cut a specific time range into a clip:
+
+```text
+Help me cut this video into a clip from 00:30 to 02:10:
+https://example.com/video
+```
+
+Burn bilingual subtitles into a finished clip:
+
+```text
+Help me burn bilingual subtitles into the final clip for this video:
+https://example.com/video
+```
+
+### What the Skill Will Do
+
+Depending on your request and subtitle availability, the skill will usually:
+
+- download the video and available subtitles from a `yt-dlp`-supported site
+- analyze subtitle content and propose semantic clip candidates
+- extract the requested clip range
+- generate bilingual subtitles that always include Chinese
+- burn subtitles into the output video when FFmpeg subtitle filters are available
 
 ## Typical Workflow in Codex
 
 ### 1. Download video and subtitles
 
 ```powershell
-D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\download_video.py <video_url> work
+python scripts\download_video.py <video_url> work
 ```
 
 ### 2. Analyze subtitle content
 
 ```powershell
-D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\analyze_subtitles.py <subtitle_path>
+python scripts\analyze_subtitles.py <subtitle_path>
 ```
 
 Codex should then read the subtitle text and propose semantic chapters with:
@@ -76,19 +178,19 @@ Codex should then read the subtitle text and propose semantic chapters with:
 ### 3. Cut a clip
 
 ```powershell
-D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\clip_video.py <video_path> <start_time> <end_time> <output_mp4>
+python scripts\clip_video.py <video_path> <start_time> <end_time> <output_mp4>
 ```
 
 ### 4. Extract a subtitle segment
 
 ```powershell
-D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\extract_subtitle_clip.py <subtitle_vtt> <start_time> <end_time> <output_srt>
+python scripts\extract_subtitle_clip.py <subtitle_vtt> <start_time> <end_time> <output_srt>
 ```
 
 ### 5. Prepare translation payload for Codex
 
 ```powershell
-D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\translate_subtitles.py <segment_srt> <payload_json>
+python scripts\translate_subtitles.py <segment_srt> <payload_json>
 ```
 
 This writes JSON with `translation` placeholders. Codex must fill those values explicitly.
@@ -115,7 +217,7 @@ Bilingual subtitle rule:
 ### 7. Burn subtitles into the video
 
 ```powershell
-D:\software\python\Anaconda3\envs\codex-conda-python\python.exe scripts\burn_subtitles.py <clip_mp4> <bilingual_srt> <burned_mp4>
+python scripts\burn_subtitles.py <clip_mp4> <bilingual_srt> <burned_mp4>
 ```
 
 ## Output Layout
