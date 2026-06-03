@@ -105,8 +105,12 @@ create_bilingual_subtitles(translated_rows, "outputs\\20260601_120000\\clip\\cli
 
 Bilingual subtitle rule:
 
-- translate the source subtitles into the target language explicitly in Codex
-- merge source text and translated text into a bilingual `.srt`
+- one language must always be Chinese
+- if the source subtitle is Chinese, generate `Chinese + English`
+- if the source subtitle is not Chinese, generate `Source Language + Chinese`
+- default to local bilingual generation, even if the site exposes multiple subtitle tracks
+- if multiple non-Chinese subtitle tracks exist, choose one primary track for the final bilingual subtitle file and keep the other tracks only as reference input
+- prefer the original-language, human-authored subtitle track as the primary track
 
 ### 7. Burn subtitles into the video
 

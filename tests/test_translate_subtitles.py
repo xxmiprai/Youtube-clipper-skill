@@ -6,6 +6,9 @@ from pathlib import Path
 from scripts.translate_subtitles import (
     build_translation_payload,
     create_bilingual_subtitles,
+    determine_bilingual_languages,
+    plan_bilingual_subtitle_strategy,
+    select_primary_subtitle_track,
     write_translated_json,
 )
 
@@ -17,7 +20,11 @@ class TranslateSubtitlesTests(unittest.TestCase):
             {"start": 1.5, "end": 3.0, "text": "World"},
         ]
 
-        payload = build_translation_payload(subtitles, batch_size=1, target_lang="Chinese")
+        payload = build_translation_payload(
+            subtitles,
+            batch_size=1,
+            target_lang="Chinese",
+        )
 
         self.assertEqual(payload["target_language"], "Chinese")
         self.assertEqual(payload["batch_size"], 1)
@@ -45,6 +52,24 @@ class TranslateSubtitlesTests(unittest.TestCase):
         self.assertIn("Hello", srt_text)
         self.assertIn("你好", srt_text)
 
+    def test_determine_bilingual_languages_requires_chinese(self):
+        self.assertEqual(
+            determine_bilingual_languages("ja"),
+            {
+                "source_language": "ja",
+                "target_language": "zh-CN",
+                "source_is_chinese": False,
+            },
+        )
+        self.assertEqual(
+            determine_bilingual_languages("zh-CN"),
+            {
+                "source_language": "zh-CN",
+                "target_language": "en",
+                "source_is_chinese": True,
+            },
+        )
+
     def test_create_bilingual_subtitles_supports_chinese_first_layout(self):
         translated = [
             {
@@ -62,6 +87,31 @@ class TranslateSubtitlesTests(unittest.TestCase):
 
         self.assertIn("你好", srt_text)
         self.assertIn("Hello", srt_text)
+
+    def test_plan_bilingual_strategy_defaults_to_local_translation(self):
+        strategy = plan_bilingual_subtitle_strategy(
+            [
+                {"language": "ja", "is_original": True, "is_human": True},
+                {"language": "zh-CN", "is_original": False, "is_human": True},
+            ]
+        )
+
+        self.assertEqual(strategy["translation_mode"], "local")
+        self.assertEqual(strategy["primary_language"], "ja")
+        self.assertEqual(strategy["target_language"], "zh-CN")
+        self.assertEqual(strategy["reference_languages"], ["zh-CN"])
+        self.assertTrue(strategy["must_include_chinese"])
+
+    def test_select_primary_subtitle_track_prefers_original_human_track(self):
+        primary = select_primary_subtitle_track(
+            [
+                {"language": "en", "is_original": False, "is_human": True},
+                {"language": "ja", "is_original": True, "is_human": True},
+                {"language": "ko", "is_original": False, "is_human": False},
+            ]
+        )
+
+        self.assertEqual(primary["language"], "ja")
 
 
 if __name__ == "__main__":

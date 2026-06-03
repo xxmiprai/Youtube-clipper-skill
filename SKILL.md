@@ -96,8 +96,12 @@ After translation, use `scripts.translate_subtitles.create_bilingual_subtitles(.
 
 Bilingual subtitle rule:
 
-- prepare a structured translation payload in Codex
-- merge the original line and translated line into a bilingual `.srt`
+- one side must always be Chinese
+- Chinese source subtitles should become `Chinese + English`
+- non-Chinese source subtitles should become `Source Language + Chinese`
+- default to local bilingual generation even when the site exposes multiple subtitle tracks
+- if multiple non-Chinese subtitle tracks exist, choose one primary track for the final bilingual output and treat the others as reference material only
+- prefer the original-language, human-authored subtitle track as the primary track when multiple candidates exist
 
 If burn-in is requested:
 

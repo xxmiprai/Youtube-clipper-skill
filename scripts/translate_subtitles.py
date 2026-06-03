@@ -4,7 +4,7 @@
 import json
 import sys
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 try:
     from .utils import seconds_to_time
@@ -27,6 +27,88 @@ def build_translation_payload(
         "batch_size": batch_size,
         "count": len(subtitles),
         "batches": batches,
+    }
+
+
+def determine_bilingual_languages(source_language: str) -> Dict[str, object]:
+    """Return the bilingual subtitle language pairing, always including Chinese."""
+    normalized = (source_language or "").strip()
+    is_chinese = normalized.lower().startswith("zh")
+    return {
+        "source_language": normalized,
+        "target_language": "en" if is_chinese else "zh-CN",
+        "source_is_chinese": is_chinese,
+    }
+
+
+def _subtitle_track_score(track: Dict[str, object]) -> tuple:
+    """Return a stable sort key for choosing the primary subtitle track."""
+    language = str(track.get("language", "") or "").strip().lower()
+    is_original = bool(track.get("is_original"))
+    is_human = bool(track.get("is_human"))
+    is_official = bool(track.get("is_official"))
+    not_auto = not bool(track.get("is_auto"))
+
+    language_priority = {
+        "ja": 0,
+        "ko": 1,
+        "en": 2,
+    }
+
+    return (
+        0 if is_original else 1,
+        0 if is_human else 1,
+        0 if is_official else 1,
+        0 if not_auto else 1,
+        language_priority.get(language, 99),
+        language,
+    )
+
+
+def select_primary_subtitle_track(
+    subtitle_tracks: List[Dict[str, object]],
+) -> Optional[Dict[str, object]]:
+    """Pick one primary subtitle track for final bilingual output."""
+    if not subtitle_tracks:
+        return None
+
+    normalized_tracks = []
+    for track in subtitle_tracks:
+        normalized_track = dict(track)
+        normalized_track["language"] = str(
+            normalized_track.get("language", "") or ""
+        ).strip()
+        normalized_tracks.append(normalized_track)
+
+    return sorted(normalized_tracks, key=_subtitle_track_score)[0]
+
+
+def plan_bilingual_subtitle_strategy(
+    subtitle_tracks: List[Dict[str, object]],
+) -> Dict[str, object]:
+    """Plan a stable bilingual strategy that always includes Chinese."""
+    primary_track = select_primary_subtitle_track(subtitle_tracks)
+    if primary_track is None:
+        raise ValueError("At least one subtitle track is required")
+
+    language_plan = determine_bilingual_languages(primary_track["language"])
+    primary_language = language_plan["source_language"]
+    target_language = language_plan["target_language"]
+
+    reference_languages = []
+    for track in subtitle_tracks:
+        language = str(track.get("language", "") or "").strip()
+        if not language or language == primary_language:
+            continue
+        reference_languages.append(language)
+
+    return {
+        "translation_mode": "local",
+        "must_include_chinese": True,
+        "primary_language": primary_language,
+        "target_language": target_language,
+        "primary_track": primary_track,
+        "reference_languages": reference_languages,
     }
 
 
@@ -160,6 +242,9 @@ def main():
         print("  python translate_subtitles.py subtitle.srt translation_payload.json 30")
         print()
         print("This command prepares a translation payload for Codex.")
+        print("Bilingual subtitle policy: one side must always be Chinese.")
+        print("If the source subtitle is Chinese, translate it to English.")
+        print("If the source subtitle is not Chinese, translate it to Chinese.")
         print("After Codex returns translated JSON, call create_bilingual_subtitles().")
         sys.exit(1)
 
